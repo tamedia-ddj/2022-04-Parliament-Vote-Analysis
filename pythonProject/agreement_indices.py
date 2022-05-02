@@ -29,7 +29,7 @@ def PI(row):
         return 0
 
 def RI(row):
-    return abs(count_yes(row)-count_no(row))/(count_yes(row)-count_no(row))
+    return abs(count_yes(row)-count_no(row))/(count_yes(row)+count_no(row))
 def AI(row):
     sum = count_yes(row) + count_no(row) + count_abs(row)
     max_ = max(count_yes(row), count_no(row), count_abs(row))
