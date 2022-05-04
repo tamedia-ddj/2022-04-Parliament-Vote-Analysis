@@ -8,12 +8,11 @@ from the command line.
 import pandas as pd
 
 
-# Load the votes (change the paths if you want to sort another kind of votes)
+# Change the paths if you want
 
-INPATH = "../data/votes_finaux.csv"
-OUTPATH = "votes_finaux_sorted_RI.csv"
-
-votes = pd.read_csv(INPATH)
+INPATH = "../processed_data/"
+TO_SORT = ["votes_finaux", "votes"]  # files that will be sorted
+OUTPATH = "../processed_data/"
 
 
 # Auxiliary functions
@@ -35,14 +34,20 @@ def rice_index(row):
     return abs(count_yes - count_no) / (count_yes + count_no)
 
 
-# Compute the rice index of each vote and sort the votes accordingly
+# Sort the files in `TO_SORT`
 
-rice_indices = votes.apply(lambda row: rice_index(row), axis=1)
-votes.insert(0, 'Rice index', rice_indices)
-votes = votes.sort_values('Rice index')
+for file in TO_SORT:
+    filepath = f"{INPATH}{file}.csv"
+    print(f"Processing {filepath}")
 
+    # Compute the rice index of each vote and sort the votes accordingly
+    votes = pd.read_csv(filepath)
+    rice_indices = votes.apply(lambda row: rice_index(row), axis=1)
+    votes.insert(0, 'Rice index', rice_indices)
+    votes = votes.sort_values('Rice index')
 
-# Export the sorted votes
-
-votes.to_csv(OUTPATH)
-print(f"Results stored in {OUTPATH}")
+    # Export the sorted votes
+    outpath = f"{OUTPATH}{file}_sorted_RI.csv"
+    votes.to_csv(outpath)
+    print(f"Results stored in {outpath}")
+    print("")
