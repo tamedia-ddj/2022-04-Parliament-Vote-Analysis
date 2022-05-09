@@ -1,12 +1,11 @@
-from cProfile import label
-from cmath import nan
+#from cProfile import label
+from unittest import skip
 import pandas as pd
-from datetime import datetime, timezone
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
-# +
-#fonction utiles 
+CURRENT_YEAR = 2022
 
 def extractParty(dataframe,partyName, mask=None):
     """
@@ -23,33 +22,91 @@ def extractParty(dataframe,partyName, mask=None):
     numOfPOI = dataframe.loc[dataframe['party'] == partyName].index #POI = Parlementaire Of Interest
     return numOfPOI
 
-def extractAge(df_parlament, df_votes, age_list):
+def extractAge(df_parlament, df_votes, given_age_groups=None, nb_groups=5):
     """
     Inputs:
         df_parlament: panda dataframe of parlamentaires.csv
         df_votes: panda dataframe of votes.csv
-        age_list: 2D list with age range (age not year): [range index][lower limit, upper limit]
+        given_age_groups: list with age range (age not year), if it's None then eaqual age groups are calc.
     Output:
-        df_age: list of panda frame containing age group
+        df_age: dict. of panda frame containing age groups
+        nb_age: dict. containing the number of elements in each group
     """
+    # convert birthdate into datetime format
+    df_parlament['birthDate'] = pd.to_datetime(df_parlament['birthDate']) 
 
-    df_parlament['birthDate'] = pd.to_datetime(df_parlament['birthDate']) # convert birthdate into datetime format
+    # sort df_parlament after age: index 0 = oldest, index 1 = youngest
+    df_sorted = df_parlament.sort_values("birthDate")
 
-    current_year = 2022 #datetime.now().year
-    df_age = {}
-    df_age[str(age_list[0][0])+"-"+str(age_list[-1][1])] = df_votes
-    for range in age_list:
-        upper_limit = current_year - range[0]
-        lower_limit = current_year - range[1]
-    
-        # inveser logic to be able to dropout persons in df_age and keep the first indicative columns of df_votes
-        df_age_inverse = df_parlament.loc[(df_parlament['birthDate'].dt.year<lower_limit) | (df_parlament['birthDate'].dt.year>upper_limit)]
-        
+    df_age = {} # dict. containing df for every age group
+    nb_age = {} # dict. containint nb. of persons of every age group
+    nb_parlamentarians = df_parlament.count()["ID"]
+
+    # calc. youngest and oldest age
+    age_lowest = CURRENT_YEAR - df_sorted.iloc[nb_parlamentarians-1]["birthDate"].year
+    age_highest = CURRENT_YEAR - df_sorted.iloc[0]["birthDate"].year
+    age_range = str(age_lowest)+"-"+str(age_highest)
+
+    # add entire dataframe with all persons as reference
+    nb_age[age_range] = nb_parlamentarians
+    df_age[age_range] = df_votes
+
+    if given_age_groups:
+        group_indices = calcGivenAgeGroups(df_sorted, given_age_groups)
+    else:
+        group_indices = calcEqualAgeGroups(df_sorted, nb_groups)
+
+    for (age_range, index) in group_indices.items():
+        inverse_range = list(range(0,index[0])) + list(range(index[1],nb_parlamentarians))
+        df_age_inverse = df_sorted.iloc[inverse_range]
+
         ID_list = df_age_inverse["ID"].astype(str).values.tolist() # convert ID to numpy array full of strings
         #ID_list = [ID_string + ".0" for ID_string in ID_list] # add ".0" because column names require it
-        df_age[str(range[0])+"-"+str(range[1])] = df_votes.drop(ID_list, 1) # drop out all persons not belonging to a certain age group
+        df_age[age_range] = df_votes.drop(ID_list, 1) # drop out all persons not belonging to a certain age group
+        nb_age[age_range] = index[1] - index[0]
+        print(ID_list)
 
-    return df_age
+    return df_age, nb_age
+
+def calcGivenAgeGroups(df_sorted, given_age_groups):
+    nb_parlamentarians = df_sorted.count()["ID"]
+
+    group_indices = {}
+    prev_age = 0
+    prev_index = nb_parlamentarians
+    for i in range(nb_parlamentarians):
+        index = nb_parlamentarians-i-1
+        age = CURRENT_YEAR - df_sorted.iloc[index]["birthDate"].year
+
+        if age>=given_age_groups[len(group_indices)] or i==nb_parlamentarians-1:
+            age_range = str(prev_age)+"-"+str(age)
+            group_indices[age_range] = [index,prev_index]
+
+            prev_age = age
+            prev_index = index
+    
+    return group_indices
+
+
+def calcEqualAgeGroups(df_sorted, nb_groups):
+    nb_parlamentarians = df_sorted.count()["ID"]
+    nb_parl_per_group = int(np.floor(nb_parlamentarians/nb_groups))
+
+    group_indices = {}  
+    prev_limit = 0
+    for i in range(nb_groups):
+        next_limit = prev_limit + nb_parl_per_group
+        if i < nb_parlamentarians%nb_groups:
+            next_limit += 1
+
+        age_lowest = CURRENT_YEAR - df_sorted.iloc[next_limit-1]["birthDate"].year
+        age_highest = CURRENT_YEAR - df_sorted.iloc[prev_limit]["birthDate"].year
+        age_range = str(age_lowest)+"-"+str(age_highest)
+        
+        group_indices[age_range] = [prev_limit,next_limit]
+        prev_limit = next_limit
+
+    return group_indices
 
 def extractDepartement(df_votes):
     departments = np.unique(df_votes["Dept."].astype(str).values.tolist())
@@ -60,18 +117,30 @@ def extractDepartement(df_votes):
 
     return df_departments
 
-def calcMeanDepartment(df_votes, dept_name_list):
-    #departments = np.unique(df_votes["Dept."].astype(str).values.tolist())
-    mean_dept = {}
-    for dept in dept_name_list:
-        dept_bool = df_votes["Dept."].str.contains(dept)
-        df_dept = df_votes[dept_bool.fillna(False)]
+def calcMeanRiceIndex(df_votes, name_list, column):
+    """
+    Input:  df_votes:   data frame of votes containing only parlamentarian of interest
+            name_list:  list of names (departments, commissions, ...) from "column"
+            column:     column that is taken to choose the rows
+    Output: mean:       dict. with names from "name_list" as key and mean rice index as value
+            nb_votes:   dict. with names from "name_list" as key and number of votes as value
+            """
+    mean = {}
+    nb_votes = {}
 
-        mean_dept[dept] = df_dept["Rice index"].mean()
+    # calc mean rice index of all votes
+    mean["all"] = df_votes["Rice index"].mean()
+    nb_votes["all"] = df_votes.count()["Rice index"]
+
+    # calc. mean rice index of all rows having "name" in "column"
+    for name in name_list:
+        particular_vote_bool = df_votes[column].str.contains(name)
+        df_particular_vote = df_votes[particular_vote_bool.fillna(False)]
+
+        mean[name] = df_particular_vote["Rice index"].mean()
+        nb_votes[name] = df_particular_vote.count()["Rice index"]
     
-    return mean_dept
-
-# Auxiliary functions
+    return mean, nb_votes
     
 def count(string, row):
     """ Count the number of occurrences of `string` in the row
@@ -106,102 +175,73 @@ def calcRiceIndex(df, df_ref):
          #votes = votes.sort_values('Rice index')
         return df
 
+def plotMeanRiceIndex(mean, nb_age, nb_votes, title="Average relative Rice Index (RI)", 
+                      img_name="rel_RI", description="(nb. of elements per group in brackets)"):
+    colors = ['tab:blue','tab:orange','tab:green','tab:red','tab:purple','tab:brown','tab:pink','tab:gray', 'b', 'g', 'r', 'c', 'm', 'y']
+    fig = plt.figure(figsize=(9, 6))
+    ax1 = fig.add_subplot()
+    for i, age in enumerate(mean):
+        departments = []
+        rice_indices = []
+        for subject in mean[age]:
+            departments.append(subject+"("+str(nb_votes[subject])+")")
+            rice_indices.append(mean[age][subject])
+        if i == 0:
+            ax1.plot(departments, rice_indices, '--', color='b', label="["+age+"[ "+" ("+str(nb_age[age])+")")
+        else:  
+            ax1.plot(departments, rice_indices, 'o', color=colors[i], label="["+age+"[ "+" ("+str(nb_age[age])+")")
+    ax1.legend(title="Age groups")
+    plt.title(title+"\n"+description)
+    plt.xlabel("Departments")
+    plt.xticks(rotation=45, ha='right')
+    plt.ylabel("RI(age group of one vote) / RI(all persons of one vote)")
+    plt.grid()
+    fig.savefig(os.path.join('AnalyseAge_results', img_name+".png"))
+
 
 if __name__ == "__main__":
-    # +
     #import dataframes
     dfp = pd.read_csv('processed_data/parlementaires.csv')
-    dfv = pd.read_csv('processed_data/votes_finaux.csv') #si on veut que les votes finaux il suffis de changer le fichier
+    dfv = pd.read_csv('processed_data/votes_finaux.csv')
     dfp.rename(columns={'Unnamed: 0.1':'ID'}, inplace=True)
 
-    # df_departments = extractDepartement(dfv)
-    # rise_dept = {}
-    # for dept in df_departments:
-    #     rice_indices = df_departments[dept].apply(lambda row: rice_index(row), axis=1)
-    #     rise_dept[dept].insert(0, 'Rice index', rice_indices)
+    # define departments and commissions
+    dept_list_french = ['DFAE','DFI','DFJP','DDPS','DFF','DEFR','DETEC','Parl', 'ChF', 'nan']
+    dept_list_german = ['EDA','EDI','EJPD','VBS','EFD','WBF','UVEK','Parl', 'ChF', 'nan']
+    commission_list_frensh = ['Bu','CdF','CdG','CPE','CSEC','CSSS','CEATE','CPS','CTT','CER','CIP','CAJ','CdI']
+    commission_list_german = ['Bü','FK','GPK','APK','WBK','SGK','UREK','SiK','KVF','WAK','SPK','RK','IK']
 
+    # replace german abbreviation with frensh ones
+    dfv["Dept."] = dfv["Dept."].replace(regex=dept_list_german, value=dept_list_french)
+    dfv["Commission"] = dfv["Commission"].replace(regex=commission_list_german, value=commission_list_frensh)
 
-    age_list = [[0,40],[40,50],[50,60],[60,70],[70,120]]
-    df_age = extractAge(dfp, dfv, age_list)
+    # extract data frames for each age group, either "given_age_groups" provides the age groups
+    # or "given_age_groups" is set to "None" and the groups are made that they have a equal size
+    nb_age_groups = 3
+    given_age_groups = [45,65,120]  
+    # given_age_groups = None 
+    df_age, nb_age = extractAge(dfp, dfv, given_age_groups=given_age_groups, nb_groups=nb_age_groups)
 
+    # calc. rice index for age groups
     for age in df_age:
         df_age[age] = calcRiceIndex(df_age[age], dfv)
 
-    dept_name_list = ['DDPS', 'DEFR', 'DETEC', 'DFAE', 'DFF', 'DFI', 'DFJP', 'Parl', 'ChF', 'nan']
+    # calc. relative mean rice index for every department and every age group
     mean_age_dept = {}
     for age in df_age:
-        mean_age_dept[age] = calcMeanDepartment(df_age[age], dept_name_list)
+        mean_age_dept[age], nb_votes_from_dept = calcMeanRiceIndex(df_age[age], dept_list_french, column='Dept.')
+
+    # calc. relative mean rice index for every commission and every age group
+    mean_age_com = {}
+    for age in df_age:
+        mean_age_com[age], nb_votes_from_com = calcMeanRiceIndex(df_age[age], commission_list_frensh, column='Commission')
+
+    # plot results
+    plot_title_dept = "Average relative Rice Index (RI) of departments"
+    img_name_dept = "Departments"
+    plotMeanRiceIndex(mean_age_dept, nb_age, nb_votes_from_dept, title=plot_title_dept, img_name=img_name_dept)
+    plot_title_com = "Average relelative Rice Index (RI) of commissions"
+    img_name_com = "Commissions"
+    plotMeanRiceIndex(mean_age_com, nb_age, nb_votes_from_com, title=plot_title_com, img_name=img_name_com)
+
     
-    colors = ['tab:blue','tab:orange','tab:green','tab:red','tab:purple','tab:brown','tab:pink','tab:gray', 'b', 'g', 'r', 'c', 'm', 'y']
-    fig = plt.figure()
-    ax1 = fig.add_axes([0.1, 0.1, 0.8, 0.8])
-    for i, age in enumerate(mean_age_dept):
-        departments = []
-        rice_indices = []
-        for j, dept in enumerate(mean_age_dept[age]):
-            departments.append(dept)
-            rice_indices.append(mean_age_dept[age][dept])
-        if i == 0:
-            ax1.plot(departments, rice_indices, '--', color='b', label=age)
-        else:  
-            ax1.plot(departments, rice_indices, 'o', color=colors[i], label=age)
-    ax1.legend()
-    plt.title("Relatif rice index of age groups for departments")
-    plt.xlabel("Departments")
-    plt.xticks(rotation=45, ha='right')
-    plt.ylabel("RI(age group) / RI(of same vote with all persons)")
-    plt.grid()
-    fig.savefig('AnalyseAge_results/age_department_plot.png')
-
-
-
-"""
-
-def extractingPercentage(dataframe,POI,p = 0 ):        
-    voteOfPOI = dataframe.loc[POI] #extraction d'un tableau avec uniquement les votes utiles 
-    pourcent = np.zeros(voteOfPOI.shape[1])
-    for i in range (0,voteOfPOI.shape[1]):
-        vote = voteOfPOI.loc[:,i]
-        nbOui = int(len(vote.loc[vote == "Oui"]))
-        nbNon = int(len(vote.loc[vote == "Non"]))
-        nbAbs = int(len(vote.loc[vote == "Abstention"]))
-        nb = [nbOui,nbNon,nbAbs]
-        m = max(nb)
-        tot = nbOui+nbNon+nbAbs
-        if tot == 0: #problem car si le tot=0 on ne devrait pas prendre en compte le vote du tout. =<
-            tot = 2  #cette partie du code doit être changée... 
-        if tot < 2*m+1: #j'ai garde le meme calcul pour le moment...
-            pourcent[i] = 100*(2*m-(tot))/(tot)      
-        else :
-            pourcent[i] = 0
-    return pourcent
-
-# +
-#creation du histogram en fct de l'age :
-PLR = extractParty(dfp,'PLR')
-plrP = np.mean(extractingPercentage(dfv,PLR))
-
-ME = extractParty(dfp,'M-E')
-meP = np.mean(extractingPercentage(dfv,ME))
-
-PSS = extractParty(dfp,'PSS')
-pssP = np.mean(extractingPercentage(dfv,PSS))
-
-UDC = extractParty(dfp,'UDC')
-udcP = np.mean(extractingPercentage(dfv,UDC))
-
-VERT = extractParty(dfp,'VERT-E-S')
-vertP = np.mean(extractingPercentage(dfv,VERT))
-
-pvl = extractParty(dfp,'pvl')
-pvlP = np.mean(extractingPercentage(dfv,pvl))
-
-plot = [meP,plrP,pssP,udcP,vertP,pvlP]
-index = ["M-E","PLR","PSS","UDC","VERT-E-S","PVL"]
-
-plt.bar(index,plot)
-plt.title("AI party")
-plt.xlabel("party")
-plt.ylabel("[%]")
-plt.savefig('Ai_party.png')
-plt.show()"""
