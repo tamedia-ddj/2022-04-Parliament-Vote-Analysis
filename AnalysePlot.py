@@ -85,7 +85,7 @@ plt.bar(index,plot)
 plt.title("AI party")
 plt.xlabel("party")
 plt.ylabel("[%]")
-plt.savefig('Ai_party_finaux.png')
+#plt.savefig('Ai_party_finaux.png')
 plt.show()
 
 
@@ -165,7 +165,7 @@ plt.bar(index,plot)
 plt.title("age PVL")
 plt.xlabel("party")
 plt.ylabel("[%]")
-plt.savefig('age_pvl_finaux.png')
+#plt.savefig('age_pvl_finaux.png')
 plt.show()
 # -
 

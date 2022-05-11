@@ -1,8 +1,9 @@
 import pandas as pd
 from datetime import datetime, date
 votes = pd.read_excel('votes.xlsx')
-parlementaires = pd.read_excel('parlementaires.xlsx')
+parlementaires = pd.read_excel('parlementaires.xlsx', index_col=0)
 
+print(parlementaires)
 parlm_1 = parlementaires.transpose().groupby(['birthDate'],axis=0)
 print(parlm_1)
 born='2000-10-2'
