@@ -7,7 +7,7 @@ import os
 
 CURRENT_YEAR = 2022
 
-def extractParty(dataframe, partyName, mask=None):
+def extractParty(dataframe,partyName, mask=None):
     """
     Inputs:
         dataframe: panda dataframe of parlamentaires.xlsx
@@ -22,7 +22,7 @@ def extractParty(dataframe, partyName, mask=None):
     numOfPOI = dataframe.loc[dataframe['party'] == partyName].index #POI = Parlementaire Of Interest
     return numOfPOI
 
-def extractAge(df_parlament, df_votes, base_year=CURRENT_YEAR, given_age_groups=None, nb_groups=5):
+def extractAge(df_parlament, df_votes, given_age_groups=None, nb_groups=5):
     """
     Inputs:
         df_parlament: panda dataframe of parlamentaires.csv
@@ -43,8 +43,8 @@ def extractAge(df_parlament, df_votes, base_year=CURRENT_YEAR, given_age_groups=
     nb_parlamentarians = df_parlament.count()["ID"]
 
     # calc. youngest and oldest age
-    age_lowest = base_year - df_sorted.iloc[nb_parlamentarians-1]["birthDate"].year
-    age_highest = base_year - df_sorted.iloc[0]["birthDate"].year
+    age_lowest = CURRENT_YEAR - df_sorted.iloc[nb_parlamentarians-1]["birthDate"].year
+    age_highest = CURRENT_YEAR - df_sorted.iloc[0]["birthDate"].year
     age_range = str(age_lowest)+"-"+str(age_highest)
 
     # add entire dataframe with all persons as reference
@@ -64,6 +64,7 @@ def extractAge(df_parlament, df_votes, base_year=CURRENT_YEAR, given_age_groups=
         #ID_list = [ID_string + ".0" for ID_string in ID_list] # add ".0" because column names require it
         df_age[age_range] = df_votes.drop(ID_list, 1) # drop out all persons not belonging to a certain age group
         nb_age[age_range] = index[1] - index[0]
+        print(ID_list)
 
     return df_age, nb_age
 
@@ -202,7 +203,7 @@ if __name__ == "__main__":
     #import dataframes
     dfp = pd.read_csv('processed_data/parlementaires.csv')
     dfv = pd.read_csv('processed_data/votes_finaux.csv')
-    dfp.rename(columns={'Unnamed: 0':'ID'}, inplace=True)
+    dfp.rename(columns={'Unnamed: 0.1':'ID'}, inplace=True)
 
     # define departments and commissions
     dept_list_french = ['DFAE','DFI','DFJP','DDPS','DFF','DEFR','DETEC','Parl', 'ChF', 'nan']
@@ -242,4 +243,5 @@ if __name__ == "__main__":
     plot_title_com = "Average relelative Rice Index (RI) of commissions"
     img_name_com = "Commissions"
     plotMeanRiceIndex(mean_age_com, nb_age, nb_votes_from_com, title=plot_title_com, img_name=img_name_com)
+
     
