@@ -15,7 +15,8 @@ def xlsx_to_csv(filename):
     print('Converting', filepath, '...')
     outpath = f"{OUTPATH}{filename}.csv"
     df = pd.read_excel(filepath)
-    df.to_csv(outpath, encoding="utf-8", header=True, index=False)
+
+    df.to_csv(outpath, encoding="utf-8", header=True)
 
 # Convert all the files specified in `TO_CONVERT`
 for filename in TO_CONVERT:
