@@ -1,38 +1,28 @@
 """
 Run this file to compute the age of the MP
-
-Note: We use the formula
-    age = 2022 - year_of_birth
-so the result might be off by one year at most.
 """
 
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, timezone
+import matplotlib.pyplot as plt
 
-
-INPATH = "processed_data/parlementaires.csv"
-THISYEAR = 2022
-OUTPATH = "processed_data/parlementaires_with_age.csv"
-
+INPATH = "../processed_data/parlementaires.csv"
+OUTPATH = "../processed_data/parlementaires_with_age.csv"
 
 # Load the list of MP
+dfp = pd.read_csv(INPATH)
 
-mps = pd.read_csv(INPATH)
 
-
-# Auxiliary function
-
-def age(mp):
-    """ Compute the age of a MP as 2022 - year_of_birth """
-
-    birthdate = mp['birthDate']
-    birthyear = int(birthdate[0:4])
-    return THISYEAR - birthyear
+def age(birth_date):
+    """Compute the age of a MP as NOW - date_of_birth"""
+    age_float = (datetime.now(tz=timezone.utc) - birth_date).days / 365.25
+    return int(round(age_float))
 
 
 # Compute the ages, sort accordingly and store the result
+ages = pd.to_datetime(dfp["birthDate"]).apply(lambda bd: age(bd))
+dfp.insert(0, "Age", ages)
 
-ages = mps.apply(lambda mp: age(mp), axis=1)
-mps.insert(0, 'Age', ages)
-mps = mps.sort_values('Age')
-mps.to_csv(OUTPATH)
+# Compute the ages, sort accordingly and store the result
+dfp.sort_values("Age", inplace=True)
+dfp.to_csv(OUTPATH)
